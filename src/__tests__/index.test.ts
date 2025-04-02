@@ -21,7 +21,7 @@ describe('Slack Approval Bot', () => {
     jest.resetModules();
     
     // Mock implementations
-    (WebClient as jest.Mock).mockImplementation(() => ({
+    ((WebClient as unknown) as jest.Mock).mockImplementation(() => ({
       users: {
         list: jest.fn().mockResolvedValue({
           members: [
@@ -51,8 +51,7 @@ describe('Slack Approval Bot', () => {
     
     // Import the app
     app = require('../index').default;
-  });
-  
+  });  
   describe('POST /slack/commands/approval-test', () => {
     it('should open a modal when slash command is triggered', async () => {
       const response = await request(app)
@@ -62,7 +61,7 @@ describe('Slack Approval Bot', () => {
       
       expect(response.status).toBe(200);
       
-      const mockWebClient = (WebClient as jest.Mock).mock.instances[0];
+      const mockWebClient = ((WebClient as unknown) as jest.Mock).mock.instances[0];
       expect(mockWebClient.users.list).toHaveBeenCalled();
       expect(mockWebClient.views.open).toHaveBeenCalledWith(expect.objectContaining({
         trigger_id: 'test-trigger-id',
@@ -75,7 +74,7 @@ describe('Slack Approval Bot', () => {
     
     it('should handle errors gracefully', async () => {
       // Make the view.open method throw an error
-      const mockWebClient = (WebClient as jest.Mock).mock.instances[0];
+      const mockWebClient = ((WebClient as unknown) as jest.Mock).mock.instances[0];
       mockWebClient.views.open.mockRejectedValueOnce(new Error('Test error'));
       
       const response = await request(app)
@@ -85,8 +84,7 @@ describe('Slack Approval Bot', () => {
       
       expect(response.status).toBe(500);
       expect(response.text).toContain('An error occurred');
-    });
-  });
+    });  });
   
   describe('View submission handler', () => {
     it('should send messages to approver and requester', async () => {
@@ -122,7 +120,7 @@ describe('Slack Approval Bot', () => {
       expect(result).toEqual({ response_action: 'clear' });
       
       // Verify messages were sent
-      const mockWebClient = (WebClient as jest.Mock).mock.instances[0];
+      const mockWebClient = ((WebClient as unknown) as jest.Mock).mock.instances[0];
       expect(mockWebClient.chat.postMessage).toHaveBeenCalledTimes(2);
       
       // Check approver message
@@ -167,7 +165,7 @@ describe('Slack Approval Bot', () => {
       // Get the action handler
       const mockInteractions = (createMessageAdapter as jest.Mock).mock.results[0].value;
       const approveCallback = mockInteractions.action.mock.calls.find(
-        call => call[0] === 'approve_request'
+        (call:any) => call[0] === 'approve_request'
       )[1];
       
       // Call the handler
@@ -177,7 +175,7 @@ describe('Slack Approval Bot', () => {
       expect(result).toEqual({ text: 'Processing approval...' });
       
       // Verify messages were sent
-      const mockWebClient = (WebClient as jest.Mock).mock.instances[0];
+      const mockWebClient = ((WebClient as unknown) as jest.Mock).mock.instances[0];
       
       // Check requester notification
       expect(mockWebClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -201,8 +199,9 @@ describe('Slack Approval Bot', () => {
     it('should handle rejection action', async () => {
       // Get the action handler
       const mockInteractions = (createMessageAdapter as jest.Mock).mock.results[0].value;
+      console.log(mockInteractions)
       const rejectCallback = mockInteractions.action.mock.calls.find(
-        call => call[0] === 'reject_request'
+        (call:any) => call[0] === 'reject_request'
       )[1];
       
       // Call the handler
@@ -212,7 +211,7 @@ describe('Slack Approval Bot', () => {
       expect(result).toEqual({ text: 'Processing rejection...' });
       
       // Verify messages were sent
-      const mockWebClient = (WebClient as jest.Mock).mock.instances[0];
+      const mockWebClient = ((WebClient as unknown) as jest.Mock).mock.instances[0];
       
       // Check requester notification
       expect(mockWebClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
