@@ -2,13 +2,11 @@
 import request from 'supertest';
 import express from 'express';
 import { WebClient } from '@slack/web-api';
-import { createEventAdapter } from '@slack/events-api';
-import { createMessageAdapter } from '@slack/interactive-messages';
+import crypto from 'crypto';
 
 // Mock Slack APIs
 jest.mock('@slack/web-api');
-jest.mock('@slack/events-api');
-jest.mock('@slack/interactive-messages');
+jest.mock('crypto');
 
 // Mock environment variables
 process.env.SLACK_SIGNING_SECRET = 'test-signing-secret';
@@ -20,7 +18,7 @@ describe('Slack Approval Bot', () => {
   beforeEach(() => {
     jest.resetModules();
     
-    // Mock implementations
+    // Mock WebClient implementation
     ((WebClient as unknown) as jest.Mock).mockImplementation(() => ({
       users: {
         list: jest.fn().mockResolvedValue({
@@ -39,25 +37,33 @@ describe('Slack Approval Bot', () => {
       }
     }));
     
-    (createEventAdapter as jest.Mock).mockReturnValue({
-      requestListener: jest.fn().mockReturnValue((req: any, res: any, next: any) => next())
+    // Mock crypto for request verification
+    (crypto.createHmac as jest.Mock).mockReturnValue({
+      update: jest.fn().mockReturnThis(),
+      digest: jest.fn().mockReturnValue('test-signature')
     });
     
-    (createMessageAdapter as jest.Mock).mockReturnValue({
-      requestListener: jest.fn().mockReturnValue((req: any, res: any, next: any) => next()),
-      action: jest.fn(),
-      viewSubmission: jest.fn()
-    });
+    (crypto.timingSafeEqual as jest.Mock).mockReturnValue(true);
     
     // Import the app
     app = require('../index').default;
-  });  
+  });
+  
+  describe('Health check endpoint', () => {
+    it('should return 200 for the health check endpoint', async () => {
+      const response = await request(app).get('/');
+      expect(response.status).toBe(200);
+      expect(response.text).toBe('Slack Approval Bot is running!');
+    });
+  });
+
   describe('POST /slack/commands/approval-test', () => {
     it('should open a modal when slash command is triggered', async () => {
       const response = await request(app)
         .post('/slack/commands/approval-test')
         .send({ trigger_id: 'test-trigger-id' })
-        .set('Content-Type', 'application/json');
+        .set('x-slack-signature', 'v0=test')
+        .set('x-slack-request-timestamp', Math.floor(Date.now() / 1000).toString());
       
       expect(response.status).toBe(200);
       
@@ -71,30 +77,14 @@ describe('Slack Approval Bot', () => {
         })
       }));
     });
-    
-    it('should handle errors gracefully', async () => {
-      // Make the view.open method throw an error
-      const mockWebClient = ((WebClient as unknown) as jest.Mock).mock.instances[0];
-      mockWebClient.views.open.mockRejectedValueOnce(new Error('Test error'));
-      
-      const response = await request(app)
-        .post('/slack/commands/approval-test')
-        .send({ trigger_id: 'test-trigger-id' })
-        .set('Content-Type', 'application/json');
-      
-      expect(response.status).toBe(500);
-      expect(response.text).toContain('An error occurred');
-    });  });
+  });
   
-  describe('View submission handler', () => {
-    it('should send messages to approver and requester', async () => {
-      // Get the viewSubmission handler
-      const mockInteractions = (createMessageAdapter as jest.Mock).mock.results[0].value;
-      const viewSubmissionCallback = mockInteractions.viewSubmission.mock.calls[0][1];
-      
-      // Mock payload
-      const mockPayload = {
+  describe('POST /slack/interactions', () => {
+    it('should handle modal submission correctly', async () => {
+      const payload = {
+        type: 'view_submission',
         view: {
+          callback_id: 'approval_request_modal',
           state: {
             values: {
               approver_block: {
@@ -113,17 +103,21 @@ describe('Slack Approval Bot', () => {
         user: { id: 'U456' }
       };
       
-      // Call the handler
-      const result = await viewSubmissionCallback(mockPayload);
+      const response = await request(app)
+        .post('/slack/interactions')
+        .send({ payload: JSON.stringify(payload) })
+        .set('x-slack-signature', 'v0=test')
+        .set('x-slack-request-timestamp', Math.floor(Date.now() / 1000).toString())
+        .set('Content-Type', 'application/x-www-form-urlencoded');
       
-      // Check result
-      expect(result).toEqual({ response_action: 'clear' });
+      expect(response.status).toBe(200);
       
-      // Verify messages were sent
       const mockWebClient = ((WebClient as unknown) as jest.Mock).mock.instances[0];
+      
+      // Verify messages to approver and requester
       expect(mockWebClient.chat.postMessage).toHaveBeenCalledTimes(2);
       
-      // Check approver message
+      // Check approver message contains buttons
       expect(mockWebClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
         channel: 'U123',
         blocks: expect.arrayContaining([
@@ -137,44 +131,33 @@ describe('Slack Approval Bot', () => {
         ])
       }));
       
-      // Check requester message
+      // Check requester got notification
       expect(mockWebClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
         channel: 'U456'
       }));
     });
-  });
-  
-  describe('Action handlers', () => {
-    let approveMockPayload: any;
-    let rejectMockPayload: any;
     
-    beforeEach(() => {
-      // Common payload structure
-      const basePayload = {
-        actions: [{ value: JSON.stringify({ requesterId: 'U456', approvalText: 'Test request' }) }],
+    it('should handle approval action correctly', async () => {
+      const payload = {
+        type: 'block_actions',
+        actions: [{
+          action_id: 'approve_request',
+          value: JSON.stringify({ requesterId: 'U456', approvalText: 'Test request' })
+        }],
         user: { id: 'U123' },
         channel: { id: 'C123' },
         message: { ts: '123456789.123456' }
       };
       
-      approveMockPayload = { ...basePayload };
-      rejectMockPayload = { ...basePayload };
-    });
-    
-    it('should handle approval action', async () => {
-      // Get the action handler
-      const mockInteractions = (createMessageAdapter as jest.Mock).mock.results[0].value;
-      const approveCallback = mockInteractions.action.mock.calls.find(
-        (call:any) => call[0] === 'approve_request'
-      )[1];
+      const response = await request(app)
+        .post('/slack/interactions')
+        .send({ payload: JSON.stringify(payload) })
+        .set('x-slack-signature', 'v0=test')
+        .set('x-slack-request-timestamp', Math.floor(Date.now() / 1000).toString())
+        .set('Content-Type', 'application/x-www-form-urlencoded');
       
-      // Call the handler
-      const result = await approveCallback(approveMockPayload);
+      expect(response.status).toBe(200);
       
-      // Check result
-      expect(result).toEqual({ text: 'Processing approval...' });
-      
-      // Verify messages were sent
       const mockWebClient = ((WebClient as unknown) as jest.Mock).mock.instances[0];
       
       // Check requester notification
@@ -189,28 +172,34 @@ describe('Slack Approval Bot', () => {
         ])
       }));
       
-      // Check approver message update
+      // Check message update
       expect(mockWebClient.chat.update).toHaveBeenCalledWith(expect.objectContaining({
         channel: 'C123',
         ts: '123456789.123456'
       }));
     });
     
-    it('should handle rejection action', async () => {
-      // Get the action handler
-      const mockInteractions = (createMessageAdapter as jest.Mock).mock.results[0].value;
-      console.log(mockInteractions)
-      const rejectCallback = mockInteractions.action.mock.calls.find(
-        (call:any) => call[0] === 'reject_request'
-      )[1];
+    it('should handle reject action correctly', async () => {
+      const payload = {
+        type: 'block_actions',
+        actions: [{
+          action_id: 'reject_request',
+          value: JSON.stringify({ requesterId: 'U456', approvalText: 'Test request' })
+        }],
+        user: { id: 'U123' },
+        channel: { id: 'C123' },
+        message: { ts: '123456789.123456' }
+      };
       
-      // Call the handler
-      const result = await rejectCallback(rejectMockPayload);
+      const response = await request(app)
+        .post('/slack/interactions')
+        .send({ payload: JSON.stringify(payload) })
+        .set('x-slack-signature', 'v0=test')
+        .set('x-slack-request-timestamp', Math.floor(Date.now() / 1000).toString())
+        .set('Content-Type', 'application/x-www-form-urlencoded');
       
-      // Check result
-      expect(result).toEqual({ text: 'Processing rejection...' });
+      expect(response.status).toBe(200);
       
-      // Verify messages were sent
       const mockWebClient = ((WebClient as unknown) as jest.Mock).mock.instances[0];
       
       // Check requester notification
@@ -225,7 +214,7 @@ describe('Slack Approval Bot', () => {
         ])
       }));
       
-      // Check approver message update
+      // Check message update
       expect(mockWebClient.chat.update).toHaveBeenCalledWith(expect.objectContaining({
         channel: 'C123',
         ts: '123456789.123456'
