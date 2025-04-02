@@ -26,7 +26,13 @@ app.use('/slack/interactions', slackInteractions.requestListener());
  * Handle the /approval-test slash command
  * Opens a modal for the user to submit an approval request
  */
+// Add this to your src/index.ts file
+app.get('/', (req, res) => {
+  res.status(200).send('Slack Approval Bot is running!');
+});
 app.post('/slack/commands/approval-test', async (req, res) => {
+  console.log('Received slash command request:', JSON.stringify(req.body));
+  
   try {
     // Extract trigger_id from the slash command request
     const { trigger_id } = req.body;
