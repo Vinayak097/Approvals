@@ -1,9 +1,17 @@
 import express from "express";
-import { handleSlashCommand, handleInteraction } from "../controllers/slackController";
+import { checkbotworking, handleInteraction, handleSlashCommand } from "../controller/slackController";
+
 
 const router = express.Router();
 
-router.post("/commands", handleSlashCommand);
+//health check
+router.post('/bot/check', checkbotworking);
+
+// Slash command handler
+router.post('/command', handleSlashCommand);
+
+// Interactions handler
 router.post("/interactions", handleInteraction);
+
 
 export default router;
