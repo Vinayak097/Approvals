@@ -1,20 +1,21 @@
-import express from "express";
-import dotenv from "dotenv";
-import bodyParser from "body-parser";
-import slackRoutes from "./routes/slack";
-import { deflate } from "zlib";
+require('dotenv').config();
+const express = require('express');
+const bodyParser = require('body-parser');
 
-dotenv.config();
-
+import router from "./routes/slack";
 const app = express();
-app.use(bodyParser.urlencoded({ extended: true }));
+const PORT = 3000;
+
+
+
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-app.use("/slack", slackRoutes);
 
-const PORT = process.env.PORT || 3000;
+app.use('/slack', router)
+
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Slack bot is running on port ${PORT}`);
 });
 
 export default app
