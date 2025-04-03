@@ -4,9 +4,9 @@
   "description": "A Slack bot to manage approval requests using Node.js, Express, and TypeScript.",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/index.js",
     "test": "jest "
   },
   "dependencies": {
