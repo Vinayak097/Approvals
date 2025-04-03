@@ -1,5 +1,5 @@
 import express from "express";
-import { checkbotworking, handleInteraction, handleSlashCommand } from "../controller/slackController";
+import { checkbotworking, enventSubscription, handleInteraction, handleSlashCommand } from "../controller/slackController";
 
 import { Request,Response } from "express";
 const router = express.Router();
@@ -13,5 +13,6 @@ router.post('/command', handleSlashCommand);
 // Interactions handler
 router.post("/interactions", handleInteraction);
 
+router.post('/events',enventSubscription)
 
 export default router;

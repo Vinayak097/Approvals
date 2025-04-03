@@ -210,7 +210,7 @@ export const checkbotworking=async (req:Request, res:Response) => {
   const { command, user_id } = req.body;
 
   if (command === '/checkbotworking') {
-      console.log(`Command received from user: ${user_id}`);
+   
       return res.json({
           response_type: "in_channel",
           text: "✅ Bot is working!",
@@ -218,4 +218,22 @@ export const checkbotworking=async (req:Request, res:Response) => {
   }
 
   res.status(400).send('Invalid command');
+}
+
+export const enventSubscription=async(req: Request, res: Response) => {
+        const { type, challenge, event } = req.body;
+      
+        // Slack URL verification
+        if (type === 'url_verification') {
+          return res.json({ challenge });
+        }
+      
+        // Handle different event types
+        if (event && event.type === 'app_mention') {
+          console.log(`📢 Bot mentioned in ${event.channel}: ${event.text}`);
+        } else if (event && event.type === 'message') {
+          console.log(`💬 New message in ${event.channel}: ${event.text}`);
+        }
+      
+        res.sendStatus(200);
 }
