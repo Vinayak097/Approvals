@@ -11,7 +11,10 @@ const PORT = 3000;
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
+app.get('/',(req:any,res:any)=>{
+    res.json({message:"hello from server"})
+    return;
+})
 app.use('/slack', slackRouter);
 
 
