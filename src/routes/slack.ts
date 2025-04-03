@@ -1,5 +1,6 @@
 import express from "express";
-import { handleSlashCommand, handleInteraction } from "../controllers/slackController";
+import { handleInteraction, handleSlashCommand } from "../controller/slackController";
+
 
 const router = express.Router();
 
