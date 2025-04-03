@@ -1,7 +1,7 @@
 import express from "express";
 import { checkbotworking, handleInteraction, handleSlashCommand } from "../controller/slackController";
 
-
+import { Request,Response } from "express";
 const router = express.Router();
 
 //health check
