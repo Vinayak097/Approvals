@@ -225,6 +225,7 @@ export const enventSubscription=async(req: Request, res: Response) => {
       
         // Slack URL verification
         if (type === 'url_verification') {
+            console.log("challege")
           return res.json({ challenge });
         }
       
